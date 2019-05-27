@@ -75,8 +75,8 @@ Control = Object:Inherit{
 
   drawcontrolv2 = nil, --// disable backward support with old DrawControl gl state (with 2.1 self.xy translation isn't needed anymore)
 
-  useRTT = ((gl.CreateFBO and gl.BlendFuncSeparate) ~= nil),
-  useDLists = (gl.CreateList ~= nil) and false, --FIXME broken in combination with RTT (wrong blending)
+  useRTT = false and ((gl.CreateFBO and gl.BlendFuncSeparate) ~= nil),
+  useDLists = false, --(gl.CreateList ~= nil), --FIXME broken in combination with RTT (wrong blending)
 
   OnResize        = {},
 }
@@ -96,7 +96,7 @@ function Control:New(obj)
 
 
   --// load the skin for this control
-  obj.classname = self.classname
+  obj.classname = obj.classname or self.classname
   theme.LoadThemeDefaults(obj)
   SkinHandler.LoadSkin(obj, self)
 
@@ -118,6 +118,10 @@ function Control:New(obj)
     end
   end
 
+  if obj.checkFileExists and ((not obj.file) or VFS.FileExists(obj.file)) and ((not obj.file2) or VFS.FileExists(obj.file2)) then
+    obj.checkFileExists = false
+  end
+  
   local p = obj.padding
   if (obj.clientWidth) then
     obj.width = obj.clientWidth + p[1] + p[3]
@@ -171,7 +175,11 @@ function Control:Dispose(...)
   end
 
   inherited.Dispose(self,...)
-  self.font:SetParent()
+  if self.font.SetParent then
+    self.font:SetParent()
+  else
+    Spring.Echo("nil self.font:SetParent", self.name)
+  end
 end
 
 --//=============================================================================
@@ -300,7 +308,7 @@ function Control:GetRelativeBox(savespace)
   end
 
   local p = self.parent
-  if (not p) then
+  if not p or not UnlinkSafe(p) then
     return t
   end
 
@@ -366,14 +374,19 @@ function Control:UpdateClientArea(dontRedraw)
     --FIXME sometimes this makes self:RequestRealign() redundant! try to reduce the Align() calls somehow
     self.parent:RequestRealign()
   end
+  local needResize = false
   if (self.width ~= self._oldwidth_uca)or(self.height ~= self._oldheight_uca) then
     self:RequestRealign()
+    needResize = true
     self._oldwidth_uca  = self.width
     self._oldheight_uca = self.height
   end
 
   if not dontRedraw then self:Invalidate() end --FIXME only when RTT!
-  self:CallListeners(self.OnResize) --FIXME more arguments and filter unchanged resizes
+  
+  if needResize then
+    self:CallListeners(self.OnResize, self.clientWidth, self.clientHeight)
+  end
 end
 
 
@@ -641,7 +654,7 @@ function Control:SetPosRelative(x, y, w, h, clientArea, dontUpdateRelative)
   end
 end
 
---- Resize the control 
+--- Resize the control
 -- @int w width
 -- @int h height
 -- @param clientArea TODO
@@ -912,7 +925,7 @@ end
 
 
 function Control:_UpdateOwnDList()
-	if not self.parent then return end
+	if not self.parent or not UnlinkSafe(self.parent) then return end
 	if not self:IsInView() then return end
 	if not self.useDLists then return end
 
@@ -922,7 +935,7 @@ end
 
 
 function Control:_UpdateChildrenDList()
-	if not self.parent then return end
+	if not self.parent or not UnlinkSafe(self.parent) then return end
 	if not self:IsInView() then return end
 
 	if self:InheritsFrom("scrollpanel") and not self._cantUseRTT then
@@ -939,7 +952,7 @@ end
 
 
 function Control:_UpdateAllDList()
-	if not self.parent then return end
+	if not self.parent or not UnlinkSafe(self.parent) then return end
 	if not self:IsInView() then return end
 
 	local RTT = self:_CheckIfRTTisAppreciated()
@@ -1095,10 +1108,14 @@ end
 function Control:_DrawInClientArea(fnc,...)
 	local clientX,clientY,clientWidth,clientHeight = unpack4(self.clientArea)
 
+	if WG.uiScale and WG.uiScale ~= 1 then
+		clientWidth, clientHeight = clientWidth*WG.uiScale, clientHeight*WG.uiScale
+	end
+	
 	gl.PushMatrix()
 	gl.Translate(clientX, clientY, 0)
 
-	local sx,sy = self:LocalToScreen(clientX,clientY)
+	local sx,sy = self:UnscaledLocalToScreen(clientX,clientY)
 	sy = select(2,gl.GetViewSizes()) - (sy + clientHeight)
 
 	if PushLimitRenderRegion(self, sx, sy, clientWidth, clientHeight) then
@@ -1111,6 +1128,11 @@ end
 
 
 function Control:IsInView()
+    -- FIXME: This is a workaround for the RTT bug, but probably not placed in
+    -- the right spot and might cause some other issues/not be optimal
+    if self.useRTT then
+        return true
+    end
 	if UnlinkSafe(self.parent) then
 		return self.parent:IsRectInView(self.x, self.y, self.width, self.height)
 	end
@@ -1124,7 +1146,7 @@ end
 
 
 function Control:IsRectInView(x,y,w,h)
-	if (not self.parent) then
+	if not self.parent or not UnlinkSafe(self.parent) then
 		return false
 	end
 
@@ -1233,6 +1255,10 @@ function Control:DrawForList()
 	end
 
 	local clientX,clientY,clientWidth,clientHeight = unpack4(self.clientArea)
+	if WG.uiScale and WG.uiScale ~= 1 then
+		clientWidth, clientHeight = clientWidth*WG.uiScale, clientHeight*WG.uiScale
+	end
+	
 	if (clientWidth > 0)and(clientHeight > 0) then
 		if (self._tex_children) then
 			gl.BlendFuncSeparate(GL.ONE, GL.SRC_ALPHA, GL.ZERO, GL.SRC_ALPHA)
@@ -1495,17 +1521,6 @@ function Control:MouseWheel(x, y, ...)
   local cx,cy = self:LocalToClient(x,y)
   return inherited.MouseWheel(self, cx, cy, ...)
 end
-
---[[
-function Control:KeyPress(...)
-  return inherited.KeyPress(self, ...)
-end
-
-
-function Control:TextInput(...)
-  return inherited.TextInput(self, ...)
-end
---]]
 
 
 function Control:FocusUpdate(...)

@@ -21,7 +21,10 @@ Screen = Object:Inherit{
 
   preserveChildrenOrder = true,
 
+  -- The active control is the control currently receiving mouse events
   activeControl = nil,
+  -- we also store the mouse button that was clicked
+  activeControlBtn = nil,
   focusedControl = nil,
   hoveredControl = nil,
   currentTooltip = nil,
@@ -38,7 +41,8 @@ local inherited = this.inherited
 --//=============================================================================
 
 function Screen:New(obj)
-  local vsx,vsy = gl.GetViewSizes()
+  local vsx,vsy = Spring.GetViewSizes()
+  
   if ((obj.width or -1) <= 0) then
     obj.width = vsx
   end
@@ -102,6 +106,10 @@ function Screen:ScreenToClient(x,y)
 end
 
 
+function Screen:UnscaledClientToScreen(x,y)
+  return x*WG.uiScale, y*WG.uiScale
+end
+
 function Screen:ClientToScreen(x,y)
   return x, y
 end
@@ -115,6 +123,10 @@ function Screen:IsRectInView(x,y,w,h)
 		(y + h >= 0)
 end
 
+
+function Screen:IsVisibleOnScreen()
+  return true
+end
 
 --//=============================================================================
 
@@ -133,8 +145,22 @@ function Screen:Update(...)
 	local hoveredControl = UnlinkSafe(self.hoveredControl)
 	local activeControl = UnlinkSafe(self.activeControl)
 	if hoveredControl and (not activeControl) then
-		local x, y = Spring.GetMouseState()
-		y = select(2,gl.GetViewSizes()) - y
+		local x, y, _, _, _, outsideSpring = Spring.GetMouseState()
+		if outsideSpring then
+			if self.currentTooltip then
+				self.currentTooltip = nil
+			end
+			if self.activeControl then
+				self.activeControl:MouseOut()
+				self.activeControl = nil
+			end
+			if self.hoveredControl then
+				self.hoveredControl:MouseOut()
+				self.hoveredControl = nil
+			end
+			return
+		end
+		y = select(2,Spring.GetViewSizes()) - y
 		local cx,cy = hoveredControl:ScreenToLocal(x, y)
 		hoveredControl:MouseMove(cx, cy, 0, 0)
 	end
@@ -142,12 +168,12 @@ end
 
 
 function Screen:IsAbove(x,y,...)
-  local activeControl = UnlinkSafe(self.activeControl)
-  if activeControl then
-    return true
+  if select(6, Spring.GetMouseState()) then
+    -- Do not register hits for offscreen mouse.
+    -- See https://springrts.com/mantis/view.php?id=5671 for the good solution.
+    return
   end
-
-  y = select(2,gl.GetViewSizes()) - y
+  y = select(2,Spring.GetViewSizes()) - y
   local hoveredControl = inherited.IsAbove(self,x,y,...)
 
   --// tooltip
@@ -195,18 +221,24 @@ function Screen:FocusControl(control)
   end
 end
 
-function Screen:MouseDown(x,y,...)
-  y = select(2,gl.GetViewSizes()) - y
+function Screen:MouseDown(x,y,btn,...)
+  y = select(2,Spring.GetViewSizes()) - y
 
-  local activeControl = inherited.MouseDown(self,x,y,...)
+  local activeControl = inherited.MouseDown(self,x,y,btn,...)
+  local oldActiveControl = UnlinkSafe(self.activeControl)
+  if activeControl ~= oldActiveControl and oldActiveControl ~= nil then
+    -- send the mouse up to controls so they know to release
+    self:MouseUp(x,y,self.activeControlBtn,...)
+  end
   self:FocusControl(activeControl)
   self.activeControl = MakeWeakLink(activeControl, self.activeControl)
+  self.activeControlBtn = btn
   return (not not activeControl)
 end
 
 
 function Screen:MouseUp(x,y,...)
-  y = select(2,gl.GetViewSizes()) - y
+  y = select(2,Spring.GetViewSizes()) - y
 
   local activeControl = UnlinkSafe(self.activeControl)
   if activeControl then
@@ -242,10 +274,11 @@ end
 
 
 function Screen:MouseMove(x,y,dx,dy,...)
-  y = select(2,gl.GetViewSizes()) - y
+  y = select(2,Spring.GetViewSizes()) - y
   local activeControl = UnlinkSafe(self.activeControl)
   if activeControl then
     local cx,cy = activeControl:ScreenToLocal(x,y)
+	local sx, sy = activeControl:LocalToScreen(cx,cy)
     local obj = activeControl:MouseMove(cx,cy,dx,-dy,...)
     if (obj==false) then
       self.activeControl = nil
@@ -262,14 +295,14 @@ end
 
 
 function Screen:MouseWheel(x,y,...)
-  y = select(2,gl.GetViewSizes()) - y
+  y = select(2,Spring.GetViewSizes()) - y
   local activeControl = UnlinkSafe(self.activeControl)
   if activeControl then
     local cx,cy = activeControl:ScreenToLocal(x,y)
     local obj = activeControl:MouseWheel(cx,cy,...)
-    if (obj==false) then
-      self.activeControl = nil
-    elseif (not not obj)and(obj ~= activeControl) then
+    if not obj then
+      return false
+    elseif obj ~= activeControl then
       self.activeControl = MakeWeakLink(obj, self.activeControl)
       return true
     else
@@ -299,4 +332,11 @@ function Screen:TextInput(...)
 end
 
 
+function Screen:TextEditing(...)
+        local focusedControl = UnlinkSafe(self.focusedControl)
+        if focusedControl then
+                return (not not focusedControl:TextEditing(...))
+        end
+        return (not not inherited:TextEditing(...))
+end
 --//=============================================================================

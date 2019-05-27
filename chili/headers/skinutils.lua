@@ -26,7 +26,7 @@ end
 local _DrawTextureAspect = _DrawTextureAspect
 
 
-function _DrawTiledTexture(x,y,w,h, skLeft,skTop,skRight,skBottom, texw,texh, texIndex)
+function _DrawTiledTexture(x,y,w,h, skLeft,skTop,skRight,skBottom, texw,texh, texIndex, disableTiling)
     texIndex = texIndex or 0
 
     local txLeft   = skLeft/texw
@@ -39,7 +39,7 @@ function _DrawTiledTexture(x,y,w,h, skLeft,skTop,skRight,skBottom, texw,texh, te
     local scaleY = h/(skTop+skBottom)
     local scaleX = w/(skLeft+skRight)
     local scale = (scaleX < scaleY) and scaleX or scaleY
-    if (scale<1) then
+    if disableTiling or (scale<1) then
       skTop = skTop * scale
       skBottom = skBottom * scale
       skLeft = skLeft * scale
@@ -89,7 +89,7 @@ function _DrawTiledTexture(x,y,w,h, skLeft,skTop,skRight,skBottom, texw,texh, te
     gl.MultiTexCoord(texIndex,0,1-txBottom)
     gl.Vertex(x,    y+h-skBottom)
 
-    --//bottom right
+    --//bottom left
     gl.MultiTexCoord(texIndex,0,1)
     gl.Vertex(x,      y+h)    --//degenerate
     gl.MultiTexCoord(texIndex,txLeft,1-txBottom)
@@ -111,6 +111,191 @@ function _DrawTiledTexture(x,y,w,h, skLeft,skTop,skRight,skBottom, texw,texh, te
 end
 local _DrawTiledTexture = _DrawTiledTexture
 
+
+function _DrawRepeatingTiledTexture(x,y,w,h, skLeft,skTop,skRight,skBottom, texw,texh, texIndex)
+    texIndex = texIndex or 0
+
+    local txLeft   = skLeft/texw
+    local txTop    = skTop/texh
+    local txRight  = skRight/texw
+    local txBottom = skBottom/texh
+
+    --//scale down the texture if we don't have enough space
+
+    local scaleY = h/(skTop+skBottom)
+    local scaleX = w/(skLeft+skRight)
+    local scale = (scaleX < scaleY) and scaleX or scaleY
+    if (scale<1) then
+      skTop = skTop * scale
+      skBottom = skBottom * scale
+      skLeft = skLeft * scale
+      skRight = skRight * scale
+    end
+
+	local horTileWidth = (texw - skLeft - skRight)
+	local widthRepeat = (w - skLeft - skRight)/horTileWidth
+	local horFrac = (1 - txLeft - txRight) *(widthRepeat%1)
+
+	local vertTileWidth = (texh - skTop - skBottom)
+	local heightRepeat = (h - skTop - skBottom)/vertTileWidth
+	local vertFrac = (1 - txTop - txBottom) *(heightRepeat%1)
+
+    --//topleft
+    gl.MultiTexCoord(texIndex,0,0)
+    gl.Vertex(x,      y)
+
+    gl.MultiTexCoord(texIndex,0,txTop)
+    gl.Vertex(x,      y+skTop)
+    gl.MultiTexCoord(texIndex,txLeft,0)
+    gl.Vertex(x+skLeft, y)
+    gl.MultiTexCoord(texIndex,txLeft,txTop)
+    gl.Vertex(x+skLeft, y+skTop)
+
+    --//topcenter
+	for i = 1, widthRepeat do
+		gl.MultiTexCoord(texIndex, 1-txRight, 0)
+		gl.Vertex(x + skLeft + i*horTileWidth, y)
+		gl.MultiTexCoord(texIndex, 1-txRight, txTop)
+		gl.Vertex(x + skLeft + i*horTileWidth, y+skTop)
+
+		-- Highly degenerate :(
+		gl.MultiTexCoord(texIndex, 1-txRight, txTop)
+		gl.Vertex(x + skLeft + i*horTileWidth, y+skTop)
+		gl.MultiTexCoord(texIndex, txLeft, 0)
+		gl.Vertex(x + skLeft + i*horTileWidth, y)
+		gl.MultiTexCoord(texIndex, txLeft, txTop)
+		gl.Vertex(x + skLeft + i*horTileWidth, y+skTop)
+	end
+
+    gl.MultiTexCoord(texIndex,txLeft + horFrac,0)
+    gl.Vertex(x+w-skRight, y)
+    gl.MultiTexCoord(texIndex,txLeft + horFrac,txTop)
+    gl.Vertex(x+w-skRight, y+skTop)
+
+	-- Highly degenerate :(
+    gl.MultiTexCoord(texIndex,txLeft + horFrac,txTop)
+    gl.Vertex(x+w-skRight, y+skTop)
+	gl.MultiTexCoord(texIndex,1 - txLeft,0)
+    gl.Vertex(x+w-skRight, y)
+    gl.MultiTexCoord(texIndex,1 - txLeft,txTop)
+    gl.Vertex(x+w-skRight, y+skTop)
+
+    --//topright
+    gl.MultiTexCoord(texIndex,1,0)
+    gl.Vertex(x+w,       y)
+    gl.MultiTexCoord(texIndex,1,txTop)
+    gl.Vertex(x+w,       y+skTop)
+
+    --//right center
+    gl.MultiTexCoord(texIndex,1,txTop)
+    gl.Vertex(x+w,       y+skTop)
+    gl.MultiTexCoord(texIndex,1 - txRight, txTop)
+    gl.Vertex(x+w - skRight,       y+skTop)    --//degenerate
+
+	for i = 1, heightRepeat do
+		gl.MultiTexCoord(texIndex,1,1-txBottom)
+		gl.Vertex(x + w, y + skTop + i*vertTileWidth)
+		gl.MultiTexCoord(texIndex,1-txRight,1-txBottom)
+		gl.Vertex(x + w - skRight, y + skTop + i*vertTileWidth)
+
+		-- Highly degenerate :(
+		gl.MultiTexCoord(texIndex,1-txRight,1-txBottom)
+		gl.Vertex(x + w - skRight, y + skTop + i*vertTileWidth)
+		gl.MultiTexCoord(texIndex,1,txTop)
+		gl.Vertex(x + w, y + skTop + i*vertTileWidth)
+		gl.MultiTexCoord(texIndex,1 - txRight,txTop)
+		gl.Vertex(x + w - skRight, y + skTop + i*vertTileWidth)
+	end
+
+    gl.MultiTexCoord(texIndex,1, txTop + vertFrac)
+    gl.Vertex(x+w, y + h - skBottom)
+    gl.MultiTexCoord(texIndex,1 - txRight, txTop + vertFrac)
+    gl.Vertex(x+w-skRight, y + h - skBottom)
+
+	-- Highly degenerate :(
+    gl.MultiTexCoord(texIndex,1 - txRight, txTop + vertFrac)
+    gl.Vertex(x+w-skRight, y + h - skBottom)
+    gl.MultiTexCoord(texIndex,1 - txRight, txTop)
+    gl.Vertex(x+w-skRight, y+skTop)
+
+    --//background
+    gl.MultiTexCoord(texIndex,txLeft, 1 - txBottom)
+    gl.Vertex(x+skLeft,    y + h - skBottom)
+    gl.MultiTexCoord(texIndex,txLeft,txTop)
+    gl.Vertex(x+skLeft,    y+skTop)
+
+    --//left center
+    gl.MultiTexCoord(texIndex,txLeft,txTop)
+    gl.Vertex(x+skLeft,    y+skTop)
+
+    gl.MultiTexCoord(texIndex,0,txTop)
+    gl.Vertex(x,       y+skTop)
+
+	for i = 1, heightRepeat do
+		gl.MultiTexCoord(texIndex, txLeft, 1 - txBottom)
+		gl.Vertex(x + skLeft, y + skTop + i*vertTileWidth)
+		gl.MultiTexCoord(texIndex, 0 , 1 - txBottom)
+		gl.Vertex(x, y + skTop + i*vertTileWidth)
+
+		-- Highly degenerate :(
+		gl.MultiTexCoord(texIndex, 0 , 1 - txBottom)
+		gl.Vertex(x, y + skTop + i*vertTileWidth)
+		gl.MultiTexCoord(texIndex,txLeft,txTop)
+		gl.Vertex(x + skLeft, y + skTop + i*vertTileWidth)
+		gl.MultiTexCoord(texIndex,0,txTop)
+		gl.Vertex(x, y + skTop + i*vertTileWidth)
+	end
+
+    gl.MultiTexCoord(texIndex, txLeft, txTop + vertFrac)
+    gl.Vertex(x+skLeft, y + h - skBottom)
+    gl.MultiTexCoord(texIndex, 0, txTop + vertFrac)
+    gl.Vertex(x, y + h - skBottom)
+
+    gl.MultiTexCoord(texIndex, 0, 1 - txBottom)
+    gl.Vertex(x, y + h - skBottom)
+
+    --//bottom left
+    gl.MultiTexCoord(texIndex,0,1)
+    gl.Vertex(x,      y+h)    --//degenerate
+    gl.MultiTexCoord(texIndex,txLeft,1-txBottom)
+    gl.Vertex(x+skLeft, y+h-skBottom)
+    gl.MultiTexCoord(texIndex,txLeft,1)
+    gl.Vertex(x+skLeft, y+h)
+
+    --//bottom center
+	for i = 1, widthRepeat do
+		gl.MultiTexCoord(texIndex, 1-txRight, 1 - txBottom)
+		gl.Vertex(x + skLeft + i*horTileWidth, y + h - skBottom)
+		gl.MultiTexCoord(texIndex, 1-txRight, 1)
+		gl.Vertex(x + skLeft + i*horTileWidth, y + h)
+
+		-- Highly degenerate :(
+		gl.MultiTexCoord(texIndex, 1-txRight, 1)
+		gl.Vertex(x + skLeft + i*horTileWidth, y + h)
+		gl.MultiTexCoord(texIndex, txLeft, 1 - txBottom)
+		gl.Vertex(x + skLeft + i*horTileWidth, y + h - skBottom)
+		gl.MultiTexCoord(texIndex, txLeft, 1)
+		gl.Vertex(x + skLeft + i*horTileWidth, y + h)
+	end
+
+    gl.MultiTexCoord(texIndex,txLeft + horFrac, 1 - txBottom)
+    gl.Vertex(x+w-skRight, y + h - skBottom)
+    gl.MultiTexCoord(texIndex,txLeft + horFrac, 1)
+    gl.Vertex(x+w-skRight, y + h)
+
+	-- Highly degenerate :(
+	gl.MultiTexCoord(texIndex,1 - txLeft, 1 - txBottom)
+    gl.Vertex(x+w-skRight, y + h - skBottom)
+    gl.MultiTexCoord(texIndex,1 - txLeft, 1)
+    gl.Vertex(x+w-skRight, y + h)
+
+    --//bottom right
+    gl.MultiTexCoord(texIndex,1,1-txBottom)
+    gl.Vertex(x+w, y+h-skBottom)
+    gl.MultiTexCoord(texIndex,1,1)
+    gl.Vertex(x+w, y+h)
+end
+local _DrawRepeatingTiledTexture = _DrawRepeatingTiledTexture
 
 function _DrawTiledBorder(x,y,w,h, skLeft,skTop,skRight,skBottom, texw,texh, texIndex)
   texIndex = texIndex or 0
@@ -296,6 +481,30 @@ function DrawWindow(obj)
   end
 end
 
+function DrawRepeatingTiledWindow(obj)
+  local w = obj.width
+  local h = obj.height
+
+  local skLeft,skTop,skRight,skBottom = unpack4(obj.tiles)
+
+  local c = obj.color
+  if (c) then
+    gl.Color(c)
+  else
+    gl.Color(1,1,1,1)
+  end
+  TextureHandler.LoadTexture(0,obj.TileImage,obj)
+    local texInfo = gl.TextureInfo(obj.TileImage) or {xsize=1, ysize=1}
+    local tw,th = texInfo.xsize, texInfo.ysize
+
+    gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawRepeatingTiledTexture, 0,0,w,h, skLeft,skTop,skRight,skBottom, tw,th)
+  gl.Texture(0,false)
+
+  if (obj.caption) then
+    obj.font:Print(obj.caption, w*0.5, 9, "center")
+  end
+end
+
 --//=============================================================================
 --//
 
@@ -320,7 +529,7 @@ function DrawButton(obj)
     local texInfo = gl.TextureInfo(obj.TileImageBK) or {xsize=1, ysize=1}
     local tw,th = texInfo.xsize, texInfo.ysize
 
-    gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawTiledTexture, 0,0,w,h, skLeft,skTop,skRight,skBottom, tw,th, 0)
+    gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawTiledTexture, 0,0,w,h, skLeft,skTop,skRight,skBottom, tw,th, 0, obj.disableTiling)
   --gl.Texture(0,false)
 
   local fgcolor = obj.borderColor
@@ -335,11 +544,11 @@ function DrawButton(obj)
     local texInfo = gl.TextureInfo(obj.TileImageFG) or {xsize=1, ysize=1}
     local tw,th = texInfo.xsize, texInfo.ysize
 
-    gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawTiledTexture, 0,0,w,h, skLeft,skTop,skRight,skBottom, tw,th, 0)
+    gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawTiledTexture, 0,0,w,h, skLeft,skTop,skRight,skBottom, tw,th, 0, obj.disableTiling)
   gl.Texture(0,false)
 
   if (obj.caption) then
-    obj.font:Print(obj.caption, w*0.5, h*0.5, "center", "center")
+    obj.font:Print(obj.caption, w*0.5 + (obj.captionHorAlign or 0), math.floor(h*0.5 - obj.font.size*0.35) + (obj.captionAlign or 0), "center", "linecenter")
   end
 end
 
@@ -358,7 +567,6 @@ function DrawComboBox(self)
 		_DrawTextureAspect(self.width - self.padding[3], 0, self.padding[3], self.height, tw,th)
 	gl.Texture(0,false)
 end
-
 
 function DrawEditBox(obj)
 	local skLeft,skTop,skRight,skBottom = unpack4(obj.tiles)
@@ -381,39 +589,54 @@ function DrawEditBox(obj)
 	gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawTiledTexture, 0, 0, obj.width, obj.height,  skLeft,skTop,skRight,skBottom, tw,th)
 	gl.Texture(0,false)
 
-	local text = obj.text	
+	local text = obj.text and tostring(obj.text)
+    if text and obj.textEditing then
+        text = text .. obj.textEditing
+    end
 	local font = obj.font
 	local displayHint = false
-	
+
 	if text == "" and not obj.state.focused then
-		text = obj.hint		
+		text = obj.hint
 		displayHint = true
 		font = obj.hintFont
 	end
-	
-	if (text) then        
-        if obj.passwordInput and not displayHint then 
+
+	if (text) then
+        if obj.passwordInput and not displayHint then
             text = string.rep("*", #text)
         end
-            
-		if (obj.offset > obj.cursor) then
-			obj.offset = obj.cursor
+
+        local cursor = obj.cursor
+        if obj.textEditing then
+            cursor = cursor + #obj.textEditing
+        end
+		if (obj.offset > cursor) and not obj.multiline then
+			obj.offset = cursor
 		end
 
 		local clientX,clientY,clientWidth,clientHeight = unpack4(obj.clientArea)
 
-		--// make cursor pos always visible (when text is longer than editbox!)
-		repeat
-			local txt = text:sub(obj.offset, obj.cursor)
-			local wt = font:GetTextWidth(txt)
-			if (wt <= clientWidth) then
-				break
-			end
-			if (obj.offset >= obj.cursor) then
-				break
-			end
-			obj.offset = obj.offset + 1
-		until (false)
+		if not obj.multiline then
+			--// make cursor pos always visible (when text is longer than editbox!)
+			repeat
+				local txt = text:sub(obj.offset, cursor)
+				local wt = font:GetTextWidth(txt)
+				if wt <= clientWidth or obj.offset >= cursor then
+					break
+				end
+				obj.offset = obj.offset + 1
+			until (false)
+			--// but also automatically always show the maximum amount of text (scroll left on deletion)
+			repeat
+				local txt = text:sub(obj.offset-1)
+				local wt = font:GetTextWidth(txt)
+				if wt > clientWidth or obj.offset < 1 then
+					break
+				end
+				obj.offset = obj.offset - 1
+			until (false)
+		end
 
 		local txt = text:sub(obj.offset)
 
@@ -429,45 +652,117 @@ function DrawEditBox(obj)
 		txt = txt:sub(1, lsize - 1)
 
 		gl.Color(1,1,1,1)
-		font:DrawInBox(txt, clientX, clientY, clientWidth, clientHeight, obj.align, obj.valign)
+		if obj.multiline then
 
-		if obj.state.focused then
-			local cursorTxt = text:sub(obj.offset, obj.cursor - 1)
+			if obj.parent and obj.parent:InheritsFrom("scrollpanel") then
+				local scrollPosY = obj.parent.scrollPosY
+				local scrollHeight = obj.parent.clientArea[4]
+
+				local h, d, numLines = obj.font:GetTextHeight(tostring(obj.text));
+				local minDrawY = scrollPosY - (h or 0)
+				local maxDrawY = scrollPosY + scrollHeight + (h or 0)
+
+				for _, line in pairs(obj.physicalLines) do
+					-- FIXME: figure out why clientY is always 0 (at least for all planetwars textboxes)
+					--local drawPos = clientY + line.y
+					local drawPos = obj.y + line.y
+					if (drawPos > minDrawY and drawPos < maxDrawY) or obj.useRTT then
+						font:Draw(line.text, clientX, clientY + line.y)
+					end
+				end
+			else
+				for _, line in pairs(obj.physicalLines) do
+					font:Draw(line.text, clientX, clientY + line.y)
+				end
+			end
+
+		else
+			font:DrawInBox(txt, clientX, clientY, clientWidth, clientHeight, obj.align, obj.valign)
+		end
+
+		if obj.state.focused and obj.editable then
+			local cursorTxt = text:sub(obj.offset, cursor - 1)
 			local cursorX = font:GetTextWidth(cursorTxt)
 
 			local dt = Spring.DiffTimers(Spring.GetTimer(), obj._interactedTime)
-			local as = math.sin(dt * 8);
-			local ac = math.cos(dt * 8);
-			if (as < 0) then as = 0 end
-			if (ac < 0) then ac = 0 end
-			local alpha = as + ac
-			if (alpha > 1) then alpha = 1 end
-			alpha = 0.8 * alpha
+			local alpha
+			if obj.cursorFramerate then
+				if math.floor(dt*obj.cursorFramerate)%2 == 0 then
+					alpha = 0.8
+				else
+					alpha = 0
+				end
+			else
+				local as = math.sin(dt * 8);
+				local ac = math.cos(dt * 8);
+				if (as < 0) then
+					as = 0
+				end
+				if (ac < 0) then
+					ac = 0
+				end
+				alpha = as + ac
+				if (alpha > 1) then
+					alpha = 1
+				end
+				alpha = 0.8 * alpha
+			end
 
 			local cc = obj.cursorColor
 			gl.Color(cc[1], cc[2], cc[3], cc[4] * alpha)
 			gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawCursor, cursorX + clientX - 1, clientY, 3, clientHeight)
 		end
         if obj.selStart and obj.state.focused then
-			local cursorTxt = text:sub(obj.offset, obj.cursor - 1)
-			local cursorX = font:GetTextWidth(cursorTxt)
 			local cc = obj.selectionColor
 			gl.Color(cc[1], cc[2], cc[3], cc[4])
-            
-            local left, right = obj.selStart, obj.selEnd
-            if left > right then
+
+			local top, bottom = obj.selStartPhysicalY, obj.selEndPhysicalY
+			local left, right = obj.selStartPhysical,  obj.selEndPhysical
+
+            if obj.multiline then
+                if top > bottom then
+                    top, bottom = bottom, top
+                    left, right = right, left
+                elseif top == bottom and left > right then
+                    left, right = right, left
+                end
+            elseif left > right then
                 left, right = right, left
             end
-			
-            local leftTxt = text:sub(obj.offset, left - 1)
-			local leftX = font:GetTextWidth(leftTxt)
-            local rightTxt = text:sub(obj.offset, right - 1)
-			local rightX = font:GetTextWidth(rightTxt)
 
-            local w = rightX - leftX
-            -- limit the selection to the editbox width
-            w = math.min(w, obj.width - leftX - 3)
-			gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawSelection, leftX + clientX - 1, clientY, w, clientHeight)
+			local y = clientY
+			local height = clientHeight
+			if obj.multiline and top == bottom then
+				local line = obj.physicalLines[top]
+				text = line.text
+				y = y + line.y
+				height = line.lh
+			end
+			if not obj.multiline or top == bottom then
+				local leftTxt = text:sub(obj.offset, left - 1)
+				local leftX = font:GetTextWidth(leftTxt)
+				local rightTxt = text:sub(obj.offset, right - 1)
+				local rightX = font:GetTextWidth(rightTxt)
+
+				local w = rightX - leftX
+				-- limit the selection to the editbox width
+				w = math.min(w, obj.width - leftX - 3)
+
+				gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawSelection, leftX + clientX - 1, y, w, height)
+			else
+				local topLine, bottomLine = obj.physicalLines[top], obj.physicalLines[bottom]
+				local leftTxt = topLine.text:sub(obj.offset, left - 1)
+				local leftX = font:GetTextWidth(leftTxt)
+				local rightTxt = bottomLine.text:sub(obj.offset, right - 1)
+				local rightX = font:GetTextWidth(rightTxt)
+
+				gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawSelection, leftX + clientX - 1, clientY + topLine.y, topLine.tw - leftX, topLine.lh)
+				for i = top+1, bottom-1 do
+					local line = obj.physicalLines[i]
+					gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawSelection, clientX - 1, clientY + line.y, line.tw, line.lh)
+				end
+				gl.BeginEnd(GL.TRIANGLE_STRIP, _DrawSelection, clientX - 1, clientY + bottomLine.y, rightX, bottomLine.lh)
+			end
         end
 	end
 end
@@ -709,7 +1004,7 @@ function DrawCheckbox(obj)
 
   gl.Color(1,1,1,1)
   if (obj.caption) then
-    obj.font:Print(obj.caption, tx, ty, nil, "center")
+    obj.font:Print(obj.caption, tx, ty - obj.font.size*0.35, nil, "linecenter")
   end
 end
 
@@ -743,7 +1038,7 @@ function DrawProgressbar(obj)
   gl.Texture(0,false)
 
   if (obj.caption) then
-    (obj.font):Print(obj.caption, w*0.5, h*0.5, "center", "center")
+    (obj.font):Print(obj.caption, w*0.5, h*0.5 - obj.font.size*0.35 + (obj.fontOffset or 0), "center", "linecenter")
   end
 end
 
@@ -1072,6 +1367,10 @@ function NCHitTestWithPadding(obj,mx,my)
   elseif (draggable) then
     return obj
   end
+
+  if obj.noClickThrough then
+    return obj
+  end
 end
 
 function WindowNCMouseDown(obj,x,y)
@@ -1111,6 +1410,9 @@ function WindowNCMouseDownPostChildren(obj,x,y)
 
   if (draggable and not dragUseGrip) then
     obj:StartDragging()
+    return obj
+  end
+  if obj.noClickThrough then
     return obj
   end
 end
