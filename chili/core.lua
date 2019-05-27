@@ -4,7 +4,7 @@ local includes = {
   "headers/links.lua",
   "headers/backwardcompability.lua",
   "headers/unicode.lua",
-
+  
   "handlers/debughandler.lua",
   "handlers/taskhandler.lua",
   "handlers/skinhandler.lua",
@@ -19,13 +19,13 @@ local includes = {
   "controls/window.lua",
   "controls/label.lua",
   "controls/button.lua",
-  "controls/textbox.lua",
+  "controls/editbox.lua",
+  "controls/textbox.lua", -- uses editbox
   "controls/checkbox.lua",
   "controls/trackbar.lua",
   "controls/colorbars.lua",
   "controls/scrollpanel.lua",
   "controls/image.lua",
-  "controls/textbox.lua",
   "controls/layoutpanel.lua",
   "controls/grid.lua",
   "controls/stackpanel.lua",
@@ -36,12 +36,10 @@ local includes = {
   "controls/panel.lua",
   "controls/treeviewnode.lua",
   "controls/treeview.lua",
-  "controls/editbox.lua",
   "controls/line.lua",
   "controls/combobox.lua",
   "controls/tabbaritem.lua",
   "controls/tabbar.lua",
-  "controls/tabpanel.lua",
 }
 
 local Chili = widget
